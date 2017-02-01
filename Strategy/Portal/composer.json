@@ -1,0 +1,23 @@
+{
+	"name": "opauth/portal",
+	"description": "Portal strategy for Opauth",
+	"keywords": ["authentication","auth","portal"],
+	"homepage": "http://opauth.org",
+	"license": "MIT",
+	"authors": [
+		{
+			"name": "",
+			"email": "",
+			"homepage": "http:portal.emergency.lu"
+		}
+	],
+	"require": {
+		"php": ">=5.2.0",
+		"opauth/opauth": ">=0.2.0"
+	},
+	"autoload": {
+		"psr-0": {
+			"": "."
+		}
+	}
+}
