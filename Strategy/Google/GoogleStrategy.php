@@ -24,25 +24,26 @@ class GoogleStrategy extends OpauthStrategy{
      * eg. array('scope' => 'email');
      */
     public $defaults = array(
-        'redirect_uri'  => '{complete_url_to_strategy}int_callback',
-        #'scope'         => 'trust'
+        'redirect_uri'  => '{complete_url_to_strategy}oauth2callback',
+        'scope'         => 'trust'
     );
 
     /**
      * Auth request
      */
     public function request(){
-        $url = 'api.nextgen-lab.net:20006/uaa/oauth/token';
+        $url = 'api.nextgen-lab.net:20006/uaa/oauth/authorize';
         $params = array(
-            'client_id' => $this->strategy['client_id']#,
+            'client_id' => $this->strategy['client_id'],
+            'response_type' => 'code'
             #'redirect_uri' => $this->strategy['redirect_uri']
         );
 
-        if (!empty($this->strategy['scope'])) $params['scope'] = $this->strategy['scope'];
-        if (!empty($this->strategy['state'])) $params['state'] = $this->strategy['state'];
-        if (!empty($this->strategy['response_type'])) $params['response_type'] = $this->strategy['response_type'];
-        if (!empty($this->strategy['display'])) $params['display'] = $this->strategy['display'];
-        if (!empty($this->strategy['auth_type'])) $params['auth_type'] = $this->strategy['auth_type'];
+       # if (!empty($this->strategy['scope'])) $params['scope'] = $this->strategy['scope'];
+       # if (!empty($this->strategy['state'])) $params['state'] = $this->strategy['state'];
+       # if (!empty($this->strategy['response_type'])) $params['response_type'] = $this->strategy['response_type'];
+       # if (!empty($this->strategy['display'])) $params['display'] = $this->strategy['display'];
+       # if (!empty($this->strategy['auth_type'])) $params['auth_type'] = $this->strategy['auth_type'];
 
         $this->clientGet($url, $params);
     }
@@ -50,20 +51,25 @@ class GoogleStrategy extends OpauthStrategy{
     /**
      * Internal callback, after Emergency's OAuth
      */
-    public function int_callback(){
+    public function oauth2callback(){
+	
         if (array_key_exists('code', $_GET) && !empty($_GET['code'])){
-            #$url = 'https://graph.facebook.com/oauth/access_token';
             $url = 'api.nextgen-lab.net:20006/uaa/oauth/token';
             $params = array(
-                'client_id' =>$this->strategy['app_id'],
+                'client_id' =>$this->strategy['client_id'],
                 'client_secret' => $this->strategy['app_secret'],
                 'redirect_uri'=> $this->strategy['redirect_uri'],
                 'code' => trim($_GET['code'])
             );
             $response = $this->serverGet($url, $params, null, $headers);
-
+	    $fp = fopen('/tmp/php.log', 'w');
+	    fwrite($fp, 'Response');
+	    fwrite($fp, $response);
+	    fwrite($fp, 'Headers');
+	    fwrite($fp, $headers);
+	    fclose($fp);
             parse_str($response, $results);
-
+	    
             if (!empty($results) && !empty($results['access_token'])){
                 $me = $this->me($results['access_token']);
 
