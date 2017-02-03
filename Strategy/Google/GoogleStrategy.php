@@ -32,7 +32,8 @@ class GoogleStrategy extends OpauthStrategy{
      * Auth request
      */
     public function request(){
-        $url = 'api.nextgen-lab.net:20006/uaa/oauth/authorize';
+        #$url = 'http://api.nextgen-lab.net:20006/uaa/oauth/authorize';
+        $url = 'http://ldap.emergency.lu/authnservice/oauth/authorize';
         $params = array(
             'client_id' => $this->strategy['client_id'],
             'response_type' => 'code'
@@ -49,30 +50,32 @@ class GoogleStrategy extends OpauthStrategy{
     public function oauth2callback(){
 	
         if (array_key_exists('code', $_GET) && !empty($_GET['code'])){
-            $url = 'ericsson:ericssonsecret@api.nextgen-lab.net:20006/uaa/oauth/token';
+	    #$url = 'ericsson:ericssonsecret@api.nextgen-lab.net:20006/uaa/oauth/token';
+            $url = 'ericsson:ericssonsecret@ldap.emergency.lu/authnservice/oauth/token';
             $params = array(
                 'code' => trim($_GET['code']),
 		'grant_type' => 'authorization_code'
             );
             #$response = $this->serverPost($url, $params, null, $headers);
             $response = $this->sendCurlPost($url, $params);
-	 
+	    #$fp = fopen('/tmp/response.log', 'w');
+	    #$user = print_r($response,true);
+	    #fwrite($fp, "Response:");
+	    #fwrite($fp, $user);
+	    #fclose($fp);
+
 	    $results = json_decode($response);
-	        $fp = fopen('/tmp/results.log', 'w');
-		$res = print_r($results,true);
-		fwrite($fp, "Res:");
-		fwrite($fp, $res);
     
 	    if (!empty($results) && !empty($results->access_token)){
 	        $token = $results->access_token;    
 		$userinfo = $this->userinfo($token);
 
 
-		$fp = fopen('/tmp/newuserinfo.log', 'w');
-		$user = print_r($userinfo,true);
-		fwrite($fp, "Userinfo:");
-		fwrite($fp, $user);
-		fclose($fp);
+		#$fp = fopen('/tmp/newuserinfo.log', 'w');
+		#$user = print_r($userinfo,true);
+		#fwrite($fp, "Userinfo:");
+		#fwrite($fp, $user);
+		#fclose($fp);
 		$this->auth = array(
 	        		    'uid' => $userinfo['uid'],
 	        		    'info' => array(),
@@ -91,7 +94,7 @@ class GoogleStrategy extends OpauthStrategy{
 	        $this->mapProfile($userinfo, 'primaryMail', 'info.email');
 	        $this->mapProfile($userinfo, 'firstname', 'info.first_name');
 	        $this->mapProfile($userinfo, 'lastname', 'info.last_name');
-	    #   $this->mapProfile($userinfo, 'picture', 'info.image');
+	        #$this->mapProfile($userinfo, 'jpegPhoto', 'info.image');
 
 		$this->callback();
 	    }
@@ -187,8 +190,8 @@ class GoogleStrategy extends OpauthStrategy{
 	        	    );
 	    $params = array();
 
-	    $userinfo = $this->sendCurlGet('api.nextgen-lab.net:20006/uaa/user2', $params, $headers);
-	    
+	    #$userinfo = $this->sendCurlGet('api.nextgen-lab.net:20006/uaa/user2', $params, $headers);
+	    $userinfo = $this->sendCurlGet('http://ldap.emergency.lu:80/authnservice/user2', $params, $headers);
 
 	    if (!empty($userinfo)){
 	            return $this->recursiveGetObjectVars(json_decode($userinfo));
