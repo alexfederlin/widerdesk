@@ -39,11 +39,6 @@ class GoogleStrategy extends OpauthStrategy{
             #'redirect_uri' => $this->strategy['redirect_uri']
         );
 
-       # if (!empty($this->strategy['scope'])) $params['scope'] = $this->strategy['scope'];
-       # if (!empty($this->strategy['state'])) $params['state'] = $this->strategy['state'];
-       # if (!empty($this->strategy['response_type'])) $params['response_type'] = $this->strategy['response_type'];
-       # if (!empty($this->strategy['display'])) $params['display'] = $this->strategy['display'];
-       # if (!empty($this->strategy['auth_type'])) $params['auth_type'] = $this->strategy['auth_type'];
 
         $this->clientGet($url, $params);
     }
@@ -54,81 +49,163 @@ class GoogleStrategy extends OpauthStrategy{
     public function oauth2callback(){
 	
         if (array_key_exists('code', $_GET) && !empty($_GET['code'])){
-            $url = 'api.nextgen-lab.net:20006/uaa/oauth/token';
+            $url = 'ericsson:ericssonsecret@api.nextgen-lab.net:20006/uaa/oauth/token';
             $params = array(
-                'client_id' =>$this->strategy['client_id'],
-                'client_secret' => $this->strategy['app_secret'],
-                'redirect_uri'=> $this->strategy['redirect_uri'],
-                'code' => trim($_GET['code'])
+                'code' => trim($_GET['code']),
+		'grant_type' => 'authorization_code'
             );
-            $response = $this->serverGet($url, $params, null, $headers);
-	    $fp = fopen('/tmp/php.log', 'w');
-	    fwrite($fp, 'Response');
-	    fwrite($fp, $response);
-	    fwrite($fp, 'Headers');
-	    fwrite($fp, $headers);
-	    fclose($fp);
-            parse_str($response, $results);
-	    
-            if (!empty($results) && !empty($results['access_token'])){
-                $me = $this->me($results['access_token']);
+            #$response = $this->serverPost($url, $params, null, $headers);
+            $response = $this->sendCurlPost($url, $params);
+	 
+	    $results = json_decode($response);
+	        $fp = fopen('/tmp/results.log', 'w');
+		$res = print_r($results,true);
+		fwrite($fp, "Res:");
+		fwrite($fp, $res);
+    
+	    if (!empty($results) && !empty($results->access_token)){
+	        $token = $results->access_token;    
+		$userinfo = $this->userinfo($token);
 
-                $this->auth = array(
-                    'provider' => 'Emergency',
-                    'uid' => $me->id,
-                    'info' => array(
-                        'name' => $me->name,
-                        'image' => 'https://graph.facebook.com/'.$me->id.'/picture?type=square'
-                    ),
-                    'credentials' => array(
-                        'token' => $results['access_token'],
-                        'expires' => date('c', time() + $results['expires'])
-                    ),
-                    'raw' => $me
-                );
 
-                if (!empty($me->email)) $this->auth['info']['email'] = $me->email;
-                if (!empty($me->username)) $this->auth['info']['nickname'] = $me->username;
-                if (!empty($me->first_name)) $this->auth['info']['first_name'] = $me->first_name;
-                if (!empty($me->last_name)) $this->auth['info']['last_name'] = $me->last_name;
-                if (!empty($me->location)) $this->auth['info']['location'] = $me->location->name;
-                if (!empty($me->link)) $this->auth['info']['urls']['facebook'] = $me->link;
-                if (!empty($me->website)) $this->auth['info']['urls']['website'] = $me->website;
-                if (!empty($me->gender)) $this->auth['info']['gender'] = $me->gender;
-                if (!empty($me->locale)) $this->auth['info']['locale'] = $me->locale;
-                if (!empty($me->timezone)) $this->auth['info']['timezone'] = $me->timezone;
+		$fp = fopen('/tmp/newuserinfo.log', 'w');
+		$user = print_r($userinfo,true);
+		fwrite($fp, "Userinfo:");
+		fwrite($fp, $user);
+		fclose($fp);
+		$this->auth = array(
+	        		    'uid' => $userinfo['uid'],
+	        		    'info' => array(),
+	        		    'credentials' => array(
+	        			    'token' => $results->access_token,
+	        			    'expires' => date('c', time() + $results->expires_in)
+	        			    ),
+	        		    'raw' => $userinfo
+	        		    );
 
-                /**
-                 * Missing optional info values
-                 * - description
-                 * - phone: not accessible via Emergency Graph API
-                 */
+	        if (!empty($results->refresh_token))
+	        {
+	           $this->auth['credentials']['refresh_token'] = $results->refresh_token;
+	        }
 
-                $this->callback();
-            }
-            else{
-                $error = array(
-                    'provider' => 'Emergency',
-                    'code' => 'access_token_error',
-                    'message' => 'Failed when attempting to obtain access token',
-                    'raw' => $headers
-                );
+	        $this->mapProfile($userinfo, 'primaryMail', 'info.email');
+	        $this->mapProfile($userinfo, 'firstname', 'info.first_name');
+	        $this->mapProfile($userinfo, 'lastname', 'info.last_name');
+	    #   $this->mapProfile($userinfo, 'picture', 'info.image');
 
-                $this->errorCallback($error);
-            }
-        }
-        else{
-            $error = array(
-                'provider' => 'Emergency',
-                'code' => $_GET['error'],
-                'message' => $_GET['error_description'],
-                'raw' => $_GET
+		$this->callback();
+	    }
+
+	    else{
+	            $error = array(
+	        		    'code' => 'access_token_error',
+	        		    'message' => 'Failed when attempting to obtain access token',
+	        		    'raw' => array(
+	        			    'response' => $response,
+	        			    'headers' => $headers
+	        			    )
+	        		  );
+
+	            $this->errorCallback($error);
+	    }   
+
+	}
+	else{
+		$error = array(
+				'provider' => 'Emergency',
+				'code' => $_GET['error'],
+				'message' => $_GET['error_description'],
+				'raw' => $_GET
             );
 
             $this->errorCallback($error);
         }
     }
 
+
+    private function sendCurlPost($url, $fields)
+    {
+	    //url-ify the data for the POST
+	    $fields_string = '';
+	    foreach($fields as $key=>$value) { $fields_string .= $key.'='.$value.'&'; }
+	    rtrim($fields_string, '&');
+
+	    //open connection
+	    $ch = curl_init();
+
+	    //set the url, number of POST vars, POST data
+	    curl_setopt($ch,CURLOPT_URL, $url);
+	    curl_setopt($ch,CURLOPT_POST, count($fields));
+	    curl_setopt($ch,CURLOPT_POSTFIELDS, $fields_string);
+	    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+	    //execute post
+	    $result = curl_exec($ch);
+
+	    //close connection
+	    curl_close($ch);
+
+
+	    return $result;
+    }
+
+    private function sendCurlGet($url, $fields, $headers)
+    {
+	    //url-ify the data for the POST
+	    $fields_string = '';
+	    foreach($fields as $key=>$value) { $fields_string .= $key.'='.$value.'&'; }
+	    rtrim($fields_string, '&');
+
+	    //open connection
+	    $ch = curl_init();
+
+	    //set the url, number of POST vars, POST data
+	    curl_setopt($ch,CURLOPT_URL, $url);
+	    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+	    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+	    //execute post
+	    $result = curl_exec($ch);
+
+	    //close connection
+	    curl_close($ch);
+
+
+	    return $result;
+    }
+
+    /**
+     * Queries Emergency API for user info
+     *
+     * @param string $access_token 
+     * @return array Parsed JSON results
+     */
+    private function userinfo($access_token){
+	    $headers = array(
+	        	    'Authorization' => 'Authorization: Bearer' . ' ' . $access_token
+	        	    );
+	    $params = array();
+
+	    $userinfo = $this->sendCurlGet('api.nextgen-lab.net:20006/uaa/user2', $params, $headers);
+	    
+
+	    if (!empty($userinfo)){
+	            return $this->recursiveGetObjectVars(json_decode($userinfo));
+	    }
+	    else{
+	            $error = array(
+	        		    'code' => 'userinfo_error',
+	        		    'message' => 'Failed when attempting to query for user information',
+	        		    'raw' => array(
+	        			    'response' => $userinfo,
+	        			    'headers' => $headers
+	        			    )
+	        		  );
+
+	            $this->errorCallback($error);
+	    }
+    }
     /**
      * Queries Emergency Graph API for user info
      *
